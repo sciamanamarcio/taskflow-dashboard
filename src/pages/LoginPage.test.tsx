@@ -5,10 +5,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../lib/api";
 import LoginPage from "./LoginPage";
 
-const { loginMock } = vi.hoisted(() => ({ loginMock: vi.fn() }));
+type LoginFn = (email: string, password: string) => Promise<void>;
+
+const { state } = vi.hoisted(() => ({
+  state: { login: (async () => {}) as LoginFn },
+}));
 
 vi.mock("../auth/AuthContext", () => ({
-  useAuth: () => ({ login: loginMock }),
+  useAuth: () => ({ login: (email: string, password: string) => state.login(email, password) }),
 }));
 
 function renderPage() {
@@ -20,10 +24,15 @@ function renderPage() {
 }
 
 describe("LoginPage", () => {
-  beforeEach(() => loginMock.mockReset());
+  beforeEach(() => {
+    state.login = async () => {};
+  });
 
   it("submits the typed credentials", async () => {
-    loginMock.mockResolvedValue(undefined);
+    const calls: string[][] = [];
+    state.login = async (email, password) => {
+      calls.push([email, password]);
+    };
     const user = userEvent.setup();
     renderPage();
 
@@ -31,11 +40,13 @@ describe("LoginPage", () => {
     await user.type(screen.getByLabelText(/password/i), "password123");
     await user.click(screen.getByRole("button", { name: /sign in/i }));
 
-    expect(loginMock).toHaveBeenCalledWith("jane@example.com", "password123");
+    expect(calls).toEqual([["jane@example.com", "password123"]]);
   });
 
   it("shows the API error message", async () => {
-    loginMock.mockRejectedValue(new ApiError(401, "INVALID_CREDENTIALS", "Invalid email or password"));
+    state.login = async () => {
+      throw new ApiError(401, "INVALID_CREDENTIALS", "Invalid email or password");
+    };
     const user = userEvent.setup();
     renderPage();
 
